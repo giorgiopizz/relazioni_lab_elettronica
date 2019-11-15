@@ -1,0 +1,33 @@
+\documentclass{report}
+\usepackage{listings}
+\usepackage{subfiles}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[italian]{babel}
+\title{Relazioni Laboratorio Elettronica}
+\author{Giorgio Pizzati}
+\date{Novembre 2019}
+\lstset{
+    tabsize=2,
+    basicstyle=\ttfamily,
+    language=[x86masm]Assembler,
+  }
+
+  
+\begin{document}
+
+\maketitle
+
+\tableofcontents{}
+
+\subfile{8051}
+
+\subfile{arm}
+
+
+
+\begin{lstlisting}[language=C, caption=Comunicazione seriale ARM]
+	
+\end{lstlisting}
+
+\end{document}
