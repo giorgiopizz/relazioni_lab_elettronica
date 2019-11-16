@@ -3,7 +3,145 @@
 \chapter{ARM}
 \section{Introduzione ai micro ARM e CORTEX}
 \subsection{Configurazione del micro}
+
 \section{Seriale}
+L'esperienza della seriale è del tutto analoga a quella con l'8051, il programma è diviso in 3 fasi:\begin{enumerate}
+    \item Nella prima fase si trasmette un messaggio di benvenuto al computer
+    \item Nella seconda fase il micro entra in modalità eco, ritrasmettendo indietro tutti i caratteri che gli si mandano
+    \item Infine riceve una serie di caratteri memorizzandoli e poi rimandando il messaggio ricevuto
+\end{enumerate}
+Per la USART è stata usata la USART2 del micro abilitandola dal STM32Cube e se ne è abilitato l'interrupt nel NVIC(Nested Vector Interrupt Controller), questo perché la USART2 è già implementata nell'STLink quindi la comunicazione avviene tramite il cavo mini-USB. 
+
+Un'ulteriore differenza con l'8051 è che il buffer per la trasmissione e per la ricezione sono distinti(il che probabilmente rende più chiaro anche il codice) e sono rispettivamente \textit{TDR} e \textit{RDR}. 
+
+Si è creato un file\_condiviso.h come header sia per il file main.c sia per il file che gestisce gli interrupt(stm32f0xx\_it.c). Esso contiene alcune definizioni importanti per entrambi i codici e permette il dialogo tra i due file, come ad esempio \textit{puntatore} che viene usata da entrambi.
+\begin{lstlisting}[language=C,caption=Header dei files]
+#define CR 13
+#define LF 10
+#define ML 10
+extern unsigned char * puntatore;
+extern unsigned char msg_ricevuto[ML+4];
+extern int lenght_da_trasmettere;
+extern unsigned char  messaggio_benvenuto[7];
+extern int lenght;
+extern unsigned char msg_errore[10];
+extern int lenght_errore;
+extern int status;
+extern int i;
+extern int loaded;
+\end{lstlisting}
+Quelle riportate di seguito sono le inizializzazioni delle variabili precedenti nel main.
+\begin{lstlisting}[language=c,caption=Inizializzazione variabili]
+unsigned char * puntatore;
+unsigned char msg_ricevuto[ML+4];
+int lenght_da_trasmettere=6;
+unsigned char messaggio_benvenuto[]={'C','i','a'
+,'o',CR,LF};
+unsigned char;
+msg_errore[]={CR,LF,'E','r','r','o','r','e',CR,LF};
+int lenght_errore=10;
+int status = 0;
+int loaded =0;
+int i=0;
+\end{lstlisting}
+
+Il vero codice inizia dopo che è avvenuta la configurazione del micro, abilitando l'interrupt di trasmissione e ricezione della USART2. Successivamente si passa il primo carattere da trasmettere al registro TDR.\footnote{È necessario fare il reset del bit di transmission completed perché quando vengono abilitati gli interrupt il micro entra in interrupt e se questo bit fosse 1 lo interpreterebbe come primo carattere trasmesso}
+\begin{lstlisting}[language=C,caption=main]
+//reset del interrupt control register
+//al bit trasmission completed
+USART2->ICR |= USART_ICR_TCCF;
+//abilito l'interrupt per la trasmissione
+USART2->CR1 |= USART_CR1_TCIE;
+//abilito l'interrupt per la ricezione
+USART2->CR1 |= USART_CR1_RXNEIE;
+//inizio a trasmettere il messaggio di benvenuto
+msg_ricevuto[0]=CR;
+msg_ricevuto[1]=LF;
+puntatore= messaggio_benvenuto;
+USART2->TDR=*puntatore;
+\end{lstlisting}
+Quando il micro finisce di trasmettere entra nell'interrupt con il bit di TC ad 1, a questo punto è necessario fare qualcosa e sarà la funzione scelta a determinare cosa.
+\begin{lstlisting}[language=C, caption=gestione dell'interrupt]
+if((USART2->ISR & USART_ISR_TC) == USART_ISR_TC){
+	//resetto il flag di trasmissione completata
+	USART2->ICR |= USART_ICR_TCCF;
+	//allora ho appena finito di trasmettere
+	scelta();
+	loaded=0;
+	return;
+	}
+else if((USART2->ISR&USART_ISR_RXNE)==USART_ISR_RXNE){
+	//allora ho appena finito di ricevere
+	scelta();
+	return;
+	}
+\end{lstlisting}
+
+La funzione scelta è il cuore di questo programma. È l'evoluzione della stessa implementata per la seriale in C \ref{lst:scelta}.
+\begin{lstlisting}[language=C,caption=Funzione scelta]
+void scelta(){
+	unsigned char carattere;
+	switch(status){
+		case 0:
+			//inserisco nel buffer di trasm il carattere
+			i++;
+			if(i<lenght_da_trasmettere){
+				USART2->TDR=*(puntatore+i);
+			}
+			else{
+				status=1;
+				i=0;
+			}
+			break;
+		case 1:
+			//do
+				//inserisco nel buffer di trasmissione
+				//il carattere trovato nel buffer in ricezione
+				carattere = (char)USART2->RDR;
+				if(carattere=='#'){
+					i=2;
+					status=2;
+				}
+				else{
+				if(!loaded){
+					loaded=1;
+					USART2->TDR=carattere;
+				}
+			}
+			break;
+		case 2:
+			//do
+				
+				carattere=USART2->RDR;
+				if(i<ML+3){
+					//aggiungo il carattere letto al vettore
+					msg_ricevuto[i]=carattere;
+					i++;
+					if(carattere=='#'){
+						//smetto di ricevere
+						status=0;
+						puntatore=msg_ricevuto;
+						msg_ricevuto[i-1]=CR;
+						msg_ricevuto[i]=LF;
+						lenght_da_trasmettere=i+1;
+						i=0;
+						//trasmetto il messaggio ricevuto
+						USART2->TDR=*puntatore;
+					}
+				}
+				else{
+					status=0;
+					//trasmetto il messaggio di errore
+					puntatore=msg_errore;
+					lenght_da_trasmettere=lenght_errore;
+					i=0;
+					USART2->TDR=*puntatore;
+				}
+			
+			break;
+	}
+}
+\end{lstlisting}
 \section{Timer7 e Led}
 \section{I2C, termometro e display}
 \end{document}

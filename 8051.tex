@@ -4,10 +4,20 @@
 \chapter{Microcontrollore 8051}
 
 \section{Introduzione al microcontrollore 8051}
-Il microcontrollore 8051, il primo dei due usati in questo corso ha una struttura di tipo Harvard. 
+Il microcontrollore 8051, il primo dei due usati in questo corso ha una struttura di tipo Harvard(come tutti i microcontrollori). 
+\begin{itemize}
+    \item memoria programmi distinta memoria dati, alcuni anche doppio bus
+    \item 8bit
+    \item interrupt non nested
+    \item assembly
+    
+\end{itemize}
 
 \subsection{Configurazione del micro}
-[scrivere introduzione, parlando dell’assembly, dei file di configurazioni quindi watchdog e oscillatore come clock]
+Qui di seguito viene riportata la configurazione generica eseguita all'inizio di ogni esperienza con l'8051.
+
+Il primo passo per configurare il microcontrollore è disattivare il watchdog. Per fare ciò viene usato il Configuration Wizard. All'interno di questo software viene creato un file assembly che viene incluso nel progetto del'8051 ed eseguito all'inizio del main mettendo in funzione tutte le periferiche interessate. Un ulteriore step da fare in fase di configurazione è quello di indicare al micro una sorgente esterna per il clock. La sorgente che useremo è un cristallo oscillatore che ha una frequenza di 22.1184 MHz. Questo passaggio è necessario per garantire al micro di avere una frequenza di clock più precisa in quanto quella interna è di ($2\pm0.02$)MHz.
+Una volta completata la configurazione nel Wizard, si esporta un file .asm che viene incluso nel progetto e nel file contenente il programma(e.g."led.a51") viene dichiarata una funzione esterna Init\_Device che fa riferimento a quella scritta dal Wizard.
 
 \section{Relazione led}
 \subsection{Led in assembly in polling}
@@ -197,14 +207,14 @@ loops=loops_on;
 \section{Relazione Seriale}
 La comunicazione UART è l'oggetto di questa esperienza. Si è messo in comunicazione il micro con il computer, tramite un cavo che collega la usb del computer con i due pin(più il pin GND) del micro, uno per la trasmissione e uno per la ricezione.
 
-Prima di trasmettere e ricevere un carattere è necessario innanzitutto configurare la UART, con il BAUDE RATE corretto, e con il timer corretto e infine abilitare l'interrupt.  
+Prima di trasmettere e ricevere un carattere è necessario innanzitutto configurare la UART, con il BAUDE RATE(9600 bps) corretto, e con il timer corretto e infine abilitare l'interrupt.  
 
 Per trasmettere è necessario mettere in SBUF0 il carattere che si vuole mandare, il micro provvederà a trasmetterlo e a trasmissione conclusa genererà un'interrupt settando la flag TI(trasmissione completata). Per quanto riguarda la ricezione invece, il programma entra in interrupt con la flag RI(ricezione completata) dopo aver ricevuto il bit di stop, e mette a disposizione il carattere ricevuto nello SBUF0.  
 \subsection{Seriale in C}
 
-In una prima fase del programma il micro trasmetteva un messaggio di benvenuto, nella seconda fase entrava in modalità eco, quindi ad ogni carattere che gli si mandava lui trasmetteva lo stesso carattere. Infine nell'ultima fase memorizzava una serie di caratteri(massimo 10) e dopo un certo carattere("\#") ritrasmetteva la stessa serie. Per realizzare ciò è stata implementata la funzione scelta che a seconda del valore di status(0,1 o 2) svolge compiti diversi. Nella prima trasmette il messaggio a cui punta "puntatore"(nella prima fase è il messaggio di benvenuto ma successivamente diventa il messaggio trasmesso dall'utente al computer), nella seconda viene implementata la modalità eco e nella terza si riceve una serie di caratteri che viene memorizzata in un vettore. Se il messaggio mandato dall'utente è più lungo di 10 caratteri viene trasmesso un messaggio di errore.
+In una prima fase del programma il micro trasmetteva un messaggio di benvenuto, nella seconda fase entrava in modalità eco, quindi ad ogni carattere che gli si mandava lui trasmetteva lo stesso carattere. Infine nell'ultima fase memorizzava una serie di caratteri(massimo 10) e dopo un certo carattere("\#") ritrasmetteva la stessa serie. Per realizzare ciò è stata implementata la funzione scelta che a seconda del valore di status(0,1 o 2) svolge compiti diversi. Nella prima trasmette il messaggio a cui punta \textit{puntatore}(nella prima fase è il messaggio di benvenuto ma successivamente diventa il messaggio trasmesso dall'utente al computer), nella seconda viene implementata la modalità eco e nella terza si riceve una serie di caratteri che viene memorizzata in un vettore. Se il messaggio mandato dall'utente è più lungo di 10 caratteri viene trasmesso un messaggio di errore.
 
-\begin{lstlisting}[language=C,caption=Funzione scelta]
+\begin{lstlisting}[language=C,caption=Funzione scelta,label={lst:scelta}]
 void scelta(void){
 	//controllo lo status
 	switch(status){
@@ -318,5 +328,38 @@ msg_ricevuto[1]=LF;
 while(1);
 \end{lstlisting}
 \subsection{Seriale in assembly}
+
+Questo semplice programma, è una piccola variante di quello precedente in cui si vuole imparare a gestire un vettore in Assembly. Infatti ciò che si definisce è un vettore nella memoria programmi, questo perché il vettore non verrà modificato ma solo letto, contenente il messaggio di benvenuto. L'indirizzo del vettore viene poi passato, subito dopo la configurazione del micro, al Data Pointer. Viene successivamente implementata una funione NEXT che salva nell'Accumulator il carattere successivo in modo tale che sia accessibile dal main del programma in c. Dunque nel programma in C basterà chiamare questa funzione e prendere il carattere contenuto in A e trasmetterlo. 
+
+
+\begin{minipage}{0.50\textwidth}
+\begin{lstlisting}[caption=Vettore in Assembly]
+VETTORE SEGMENT CODE
+STACK SEGMENT IDATA
+NEXT SEGMENT CODE
+RSEG STACK
+STACK2: DS 10H
+RSEG VETTORE
+VETT: DB 'Ciao',00H
+RSEG NEXT
+N:	MOVC A,@A+DPTR
+    RET
+RSEG CODICE
+START:
+	LCALL Init_Device
+	MOV DPTR, #VETT
+	RET
+END
+\end{lstlisting}
+\end{minipage}%
+\hfill
+\begin{minipage}{0.50\textwidth}
+\begin{tabular}{|p{\textwidth}}
+\begin{lstlisting}[caption=codice in C]
+NEXT();
+*puntatore =(uchar)ACC;
+\end{lstlisting}
+\end{tabular}
+\end{minipage}%
 
 \end{document}
