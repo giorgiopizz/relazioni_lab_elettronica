@@ -143,5 +143,88 @@ void scelta(){
 }
 \end{lstlisting}
 \section{Timer7 e Led}
+Questa esperienza è analoga a quella svolta con il led ed il bottone per l'8051 in C(referenza:\ref{led in C}). Infatti l'obiettivo è di realizzare un programma in cui si possa cambiare la luminosità del LED sfruttando gli interrupt del timer del micro ed il bottone. Dunque è stato configurato il Timer 7(TIM7) a 16 bit e l'overflow a 10000(quindi il timer conta da 0 a 10000), con il relativo interrupt. Abbiamo abilitato la porta PA5 come GPIO output per poter accendere e spegnere il led, ed è stato abilitato l'interrupt esterno della porta PC13(il bottone), di modo che ogni volta che viene premuto, viene generato un interrupt.
+
+La funzione wait\_tim aspetta che il timer abbia raggiunto n interrupt, facendo trascorrere un po' di tempo.
+\begin{lstlisting}[language=C, caption=Funzione wait\_tim per aspettare]
+void wait_tim(){
+	wait=1;
+	TIM7->CNT=0;//si imposta il contatore a 0
+	TIM7->SR=0;//si imposta lo status register a 0
+	//si abilita il counter per iniziare a contare
+	TIM7->CR1|=TIM_CR1_CEN;
+	//si aspetta fino a che non viene settata a 0
+	while(wait){}
+}
+\end{lstlisting}
+All'interno dell'interrupt del timer è necessario fare un check sulla variabile \textit{loop}, la quale indica quanti cicli di interrupt bisogna attendere prima di fermare il timer.  
+\begin{lstlisting}[language=C, caption=Gestione dell'interrupt del timer]
+if(loops>0){
+		loops-=1;
+		TIM7->CR1|=TIM_CR1_CEN;
+	}
+else{
+	wait=0;//si puo smettere di aspettare
+	//e smettere di contare
+	TIM7->CR1&=~TIM_CR1_CEN;
+}
+\end{lstlisting}
+
+All'interno dell'interrupt del bottone è necessario cambiare la luminosità, questo come nel caso della luminosità in C\ref{lst:led in C}, viene fatto cambiando il numero di loop che il led sta accesso ovvero la variabile \textit{loop\_on}. Come nel caso del C, la variabile status indica 5 possibili luminosità(0,25,50,75,100), ciclando su di essi.
+\begin{lstlisting}[language=C, caption=Gestione interrupt del bottone]
+if(status<4){
+	status++;
+}
+else{
+	status=0;
+}
+loops_on=n_loops*status*25/100;//cambio la luminosita'
+//resetto
+wait=0;
+acceso=0;
+\end{lstlisting}
+
+\begin{lstlisting}[language=C, caption=Variabili globali interrupt]
+int status=0;
+int loops_on=0;
+int n_loops=50;
+int acceso;
+int wait;
+volatile int loops=0;
+\end{lstlisting}
+
+\begin{lstlisting}[language=C,caption=Variabili globali main]
+extern int loops_on;
+extern int n_loops;
+extern int acceso;
+extern int wait;
+extern int loops;
+\end{lstlisting}
+All'interno del main è necessario innanzitutto abilitare l'interrupt del timer, successivamente si entra in un loop infinito all'interno del quale si continua ad accendere e spegnere il led. Il led rimane acceso per \textit{loops\_on} cicli e spento per \textit{n\_loops-loops\_on} cicli, con \textit{n\_loops} il numero massimo di cicli. 
+
+\begin{lstlisting}[language=C,caption=Main]
+//abilito l'interrupt del timer
+TIM7->DIER|=TIM_DIER_UIE;
+while (1)
+  {
+	if(acceso==0){
+		//accendo
+		//cambio lo stato del led
+		HAL_GPIO_TogglePin(GPIOA,GPIO_PIN_5);
+		//devo aspettare loops_on cicli
+		loops=loops_on;
+		wait_tim();
+		acceso=1;
+	}
+	else{
+		//spengo
+		HAL_GPIO_TogglePin(GPIOA,GPIO_PIN_5);
+		//devo aspettare loops massimi - loops_on
+		loops=n_loops-loops_on;
+		wait_tim();
+		acceso=0;
+	}
+}
+\end{lstlisting}
 \section{I2C, termometro e display}
 \end{document}

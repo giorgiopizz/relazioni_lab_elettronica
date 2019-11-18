@@ -112,8 +112,7 @@ R1 quindi in questo caso è un registro di stato, tiene in memoria lo stato del 
 
 Ciò che viene eseguito nel main è solamente la configurazione del micro, viene messo in R0 l'indirizzo di 255 e in R1 quello di 0.
 
-\subsection{Led in C}
-
+\subsection{Led in C}\label{led in C}
 Scopo di quest'esperienza è di apprendere l'interazione tra il programma in C e quello in assembly. La parte di configurazione del micro infatti rimane scritta in asm mentre il codice principale è scritto in C. L'interazione in realtà si limita a dichiarare nel file .c una funzione esterna Init Device definita nel file .asm. Il programma in questo caso, invece di limitarsi ad accendere e spegnere il led, permette di regolarne la luminosità tramite il bottone disposto sulla scheda di sviluppo. Dunque le novità del codice rispetto a quelli precedenti sono 
 \begin{itemize}
     \item codice in C
@@ -161,7 +160,7 @@ Come ulteriore differenza dall'asm infatti si ha che per gestire l'interrupt è 
  \end{lstlisting}
  
  Dunque si è definita la luminosità come un int che può essere 0, 25,50,75,100. La variabile lumstatus identifica in che stato si è tra i 5 possibili. Essa viene modificata nell'interrupt del bottone, quindi ogni volta che viene schiacciato.
- \begin{lstlisting}[language=C, caption=Interrupt pulsante]
+ \begin{lstlisting}[language=C, caption=Interrupt pulsante,label={lst:led in C}]
  void interruzione_pulsante(void) interrupt 19{
 	TR0=0;
 	TF0=0;
