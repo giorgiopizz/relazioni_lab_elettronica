@@ -326,6 +326,8 @@ msg_ricevuto[0]=CR;
 msg_ricevuto[1]=LF;
 while(1);
 \end{lstlisting}
+%aggiungere esperienza con oscilloscopio
+
 \subsection{Seriale in assembly}
 
 Questo semplice programma, è una piccola variante di quello precedente in cui si vuole imparare a gestire un vettore in Assembly. Infatti ciò che si definisce è un vettore nella memoria programmi, questo perché il vettore non verrà modificato ma solo letto, contenente il messaggio di benvenuto. L'indirizzo del vettore viene poi passato, subito dopo la configurazione del micro, al Data Pointer. Viene successivamente implementata una funione NEXT che salva nell'Accumulator il carattere successivo in modo tale che sia accessibile dal main del programma in c. Dunque nel programma in C basterà chiamare questa funzione e prendere il carattere contenuto in A e trasmetterlo. 

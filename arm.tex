@@ -78,7 +78,7 @@ else if((USART2->ISR&USART_ISR_RXNE)==USART_ISR_RXNE){
 \end{lstlisting}
 
 La funzione scelta è il cuore di questo programma. È l'evoluzione della stessa implementata per la seriale in C \ref{lst:scelta}.
-\begin{lstlisting}[language=C,caption=Funzione scelta]
+\begin{lstlisting}[language=C,caption=Funzione scelta,label={lst:scelta_due}]
 void scelta(){
 	unsigned char carattere;
 	switch(status){
@@ -226,5 +226,359 @@ while (1)
 	}
 }
 \end{lstlisting}
+
+
 \section{I2C, termometro e display}
+
+
+\subsection{Configurazione del micro}
+
+
+L'esperienza riguardante il protocollo di trasmissione I2C vede coinvolta, oltre che al micro STM32F072rb, anche una scheda da posizionare sopra la scheda di sviluppo Nucleo, al di sopra della quale è connesso un LCD, un termometro ed una manopola, insieme a 4 led. Obbiettivo dell'esperienza è mettere in comunicazione il micro con il display ed il termometro attraverso l'i2c e leggere il potenziale registrato dalla manopola attraverso l'adc. 
+Prima di iniziare a scrivere il codice è stato necessario configurare attraverso CUBE il micro, essendo la scheda posizionata sui pin del nucleo bisogna selezionare i pin adibiti alla comunicazione I2C, quelli per l'ADC e i pin dei led. In particolare le operazioni eseguite sono le seguenti:
+\begin{itemize}
+    \item Attivare l'I2C1 sui pin PB8 e PB9
+    \item Abilitare PA5 come GPIO\_Output, per il reset del display
+    \item Abilitare PA9 come GPIO\_Output, per la retroilluminazione del display
+    \item Abilitare PC0 e PC3 come GPIO\_Output, servono per il termometro. (Notare che i pin di comunicazione I2C sono gli stessi sia per il display che per il termometro, è una caratteristica intrinseca del protocollo I2C avere solo due linee adibite alla comunicazione multiutente, una per il clock e una per i dati)
+    \item Abilitare PA0 come ADC\_IN0 ovvero come porta per l'ADC
+    \item Le porte PB0,PB1,PB2,PB3 sono messe come GPIO\_Output per comandare i 4 led
+\end{itemize}
+È stato ovviamente abilitato l'interrupt dell'ADC, dell'I2C, del Timer7(con un autoreload value di 48000, ovvero parte da 0 e arriva a 48000) in modo che con il clock a 48MHz andasse in overflow ogni 1ms. La frequenza dell'ADC è stata invece impostata a 14MHz.
+Per una seconda parte dell'esperienza è stata anche attivata la USART2 come nelle precedenti esperienze(freq. a 9600bit/s...) con il relativo interrupt.
+
+
+\subsection{Esperienza}
+
+Descrizione del programma I2C display termometro. 
+L'obiettivo di questo programma è scrivere su un display la temperatura registrata dal termometro e 
+il potenziale registrato da un potenziometro a manopola letto dall'adc.
+è necessario dividere il programma in più parti:
+\begin{itemize}
+    \item Leggere dall'ADC il potenziale
+    \item Inizializzare il display
+    \item Leggere la temperatura dal termometro
+    \item Trasmettere al display la temperatura
+    \item Trasmettere al display il potenziale
+\end{itemize}
+
+\subsection{I2C}
+
+Essendo l'I2C triggerato sia quando si sta inizializzando il display, sia quando si sta leggendo la temperatura sia quando si deve trasmettere la temperatura letta, si è ritenuto necessario l'ausilio di , simile a quella già implementata in \ref{lst:scelta} e in \ref{lst:scelta_due}.
+L'interrupt viene triggerato nei seguenti casi:\begin{enumerate}
+    \item Si è specificato di voler trasmettere NBYTES di caratteri e la trasmissione si è conclusa(STOPIE)
+    \item Si è inviato un singolo carattere e la trasmissione è andata a buon fine(TXIE)
+    \item Si è specificato di voler leggere un dato che è stato ricevuto(RXIE)
+\end{enumerate}
+Per inizializzare correttamente il display è necessario mandargli una serie di comandi ed impostazioni intervellate da 1 ms. Per questa ragione è necessario che la comunicazione avvenga per blocchi di 2 bytes, 1 byte per dire al display che quello successo è un comando ed 1 byte per il comando. Tra i blocchi da 2 bytes si attendono per sicurezza 100ms, poi si pulisce la stop flag e si fa ripartire la comunicazione. 
+Per rendere più facilmente interpretabile lo stato del micro, alla conclusione di ogni sezione di codice vengono accesi i led.
+\begin{lstlisting}[language=C, caption=Gestione Interrupt I2C per inizializzazione Display]
+if((I2C1->ISR & I2C_ISR_STOPF)!=0){
+    //ho finito di trasmettere la serie di 
+    //caratteri/comandi
+	i2c_loops=100;
+	while(i2c_loops>0){
+		TIM7->SR=0;
+		TIM7->CNT=0;
+		TIM7->CR1|=TIM_CR1_CEN;
+		while(TIM7->SR==0){}
+		i2c_loops--;
+	}
+	TIM7->CR1&=~TIM_CR1_CEN;
+	if(j<16){
+	    //sto trasmettendo ancora i bytes 
+	    //di inizializzazione
+	    //Pulisco la flag dello stop-bit
+		I2C1->ICR |= I2C_ICR_STOPCF;
+		//Faccio partire lo START
+		I2C1->CR2 |= I2C_CR2_START; 
+	}
+}
+if (j<16){
+	if(j==0){
+		led();
+	}
+	//viene mandato un carattere
+	I2C1->TXDR = initdata[j];
+	j++; 
+}
+\end{lstlisting}
+Per far partire l'inizializzazione è necessario prima abilitare gli interrupt dell'i2c, poi specificare quanti byte si vogliono trasmettere e a che indirizzo. 
+Gli interrupt vengono impostati da CR1 mentre CR2 si occupa degli indirizzi delle periferiche e dei bytes da trasmettere o leggere. CR2 ha i bit che si occupano dei bytes da trasmettere dalla posizione 16 a 23 è necessario quindi ruotare a sx NBYTES di 16. 
+\begin{lstlisting}[language=C,caption=Inizio inizializzazione]
+/* definisco gli indirizzi*/
+//indirizzo lcd, ruotato a sx per lasciare bit di r/w
+#define LCD_ADDRESS (0X3E<<1) 
+//indirizzo termometro
+#define LM76_ADDRESS (0X48<<1) 
+
+/* definisico le variabili di interesse globale*/
+
+char initdata[]={0x00,0x38,0x00,0x39,0x00,0x14,
+0x00,0x74,0x00,0x54,0x00,0x6F,0x00,0x0F,0x00,0x01};
+int NBYTES =(2<<16);
+
+/* faccio partire la trasmissione*/
+
+I2C1->CR1|=I2C_CR1_RXIE;
+I2C1->CR1|=I2C_CR1_TXIE;
+I2C1->CR2|=I2C_CR2_AUTOEND;
+I2C1->CR1|=I2C_CR1_STOPIE;
+
+I2C1->CR2 |= NBYTES;
+I2C1->CR2 |= LCD_ADDRESS;
+I2C1->CR2 |= I2C_CR2_START;
+\end{lstlisting}
+
+Una volta inizializzato il display si può procedere con la trasmissione dei messaggi che si vuole visualizzare. Sono due i messaggi, uno indicante la temperatura ed uno indicante il potenziale della manopola(in una seconda versione verrà riportata la percentuale invece della tensione). Il primo messaggio da mandare è quello relativo alla temperatura per semplicità del codice, infatti dopo che sono stati trasmessi i due messaggi ogni 10 secondi verrà verificata la posizione della manopola aggiornando il valore della tensione. Occorre prima leggere la temperatura, impostando l'i2c in lettura di 2 bytes. Ciò viene fatto dentro all'interrupt dell'i2c.
+
+\begin{lstlisting}[language=C,caption=Lettura temperatura]
+//definisco il messaggio della temperatura
+char temp[]={'T','e','m','p',':','.','.','.','.'};
+
+switch(j){
+case 16:
+     I2C1->ICR |= I2C_ICR_STOPCF; 
+     I2C1->CR2 &= ~0xFF; 
+     I2C1->CR2 |= LM76_ADDRESS; 
+     NBYTES = 2 << 16; 
+     I2C1->CR2 &= ~(0xFF<<16); 
+     I2C1->CR2 |= NBYTES; 
+     //setto il bit di lettura
+     I2C1->CR2 |= I2C_CR2_RD_WRN;
+     I2C1->CR2 |= I2C_CR2_START; 
+     j++;
+     break;
+case 17:
+     if(I2C1->ISR & I2C_ISR_RXNE){ 
+     t1 = I2C1->RXDR; //prima parte della temperatura
+     j++;
+     }
+     break;
+ case 18:
+     if(I2C1->ISR & I2C_ISR_RXNE){
+     t2= I2C1->RXDR; //seconda parte della temperatura
+     j++;
+     }
+     break;
+ case 19:
+     t1= t1<<8; 
+     t= ((t1+t2)>>3); 
+     temp[5]=(int)t/160+'0';
+     resto=t%160;
+     temp[6]=(int)(resto*10)/160+'0';
+     resto=(resto*10)%160;
+     temp[8]=(int)(resto*10)/160+'0';
+     puntatore=temp;
+     lenght_da_trasmettere=9;
+     j++;
+     break; 
+\end{lstlisting}
+Ora che la temperatura è stata recuperata si mette il micro in comunicazione con il display, in trasmissione di 12 bytes(3 di impostazione e 9 caratteri del messaggio). 
+I comandi trasmessi sono 0x80 indicante che i successivi 2 bytes sono di controllo, 0x80 indicante l'inizio della prima riga e 0x40 per specificare il tipo di dati che verranno mandati(caratteri). Ogni volta che l'interrupt viene triggerato j viene incrementato e viene trasmesso un nuovo carattere.
+\begin{lstlisting}[language=C,caption=Trasmissione messaggio display]
+case 20:
+	I2C1->ICR |= I2C_ICR_STOPCF;
+	//si mette il trasmissione
+	I2C1->CR2 &= ~I2C_CR2_RD_WRN; 
+	I2C1->CR2 &= ~0xFF; 
+	I2C1->CR2 |= LCD_ADDRESS;
+	NBYTES = ((lenght_da_trasmettere+3) <<16); 
+	I2C1->CR2 &= ~(0xFF<<16); 
+	I2C1->CR2 |= NBYTES; 
+	I2C1->CR2 |= I2C_CR2_START; 
+	j++;
+	break; 
+case 21:
+	I2C1->TXDR = 0x80; 
+	j++;
+	break;
+case 22:
+	 I2C1->TXDR = 0x80;
+	 j++;
+	 break;
+case 23:
+	 I2C1->TXDR = 0x40;
+	 j++;
+	 break;
+case 24:
+	 if(i<lenght_da_trasmettere){
+		I2C1->TXDR = *(puntatore+i);
+		i++;
+	 }
+	 else{
+		j++;
+        led();
+	}
+	break;
+\end{lstlisting}
+Adesso bisogna trasmettere il messaggio della manopola. In questa versione viene usata la percentuale del potenziale(rispetto a 3.3) a cui è ruotata(la versione precedente mandava il vettore vec che contiene il potenziale letto dall'adc). Al termine dell'invio e dopo che sono passati 10 secondi viene controllato nuovamente il potenziale della manopola e ne viene aggiornato il valore.
+\begin{lstlisting}[language=C,caption=Trasmissione messaggio manopola,label={lst:trasm_vec}]
+case 25:
+	led();
+	i2c_loops=100;
+	while(i2c_loops>0){
+		TIM7->SR=0;
+		TIM7->CNT=0;
+		TIM7->CR1|=TIM_CR1_CEN;
+		while(TIM7->SR==0){}
+		i2c_loops--;
+	}
+	TIM7->CR1&=~TIM_CR1_CEN;
+	//converto in percentuale vec
+	pot=(float)vec[0]+(float)vec[1]/10
+	+(float)vec[2]/100;
+	perc[0]=(int)(pot*10)/33;
+	resto=((int)(pot*10))%33;
+	perc[1]=(int)(resto*10)/33;
+	resto=(resto*10)%33;
+	perc[2]=(int)(resto*10)/33;
+	resto=(resto*10)%33;
+	perc[3]=(int)(resto*10)/33;
+	//controllo se ci sono delle cifre iniziali nulle
+	//nel qual caso trasmetto uno spazio
+	if(perc[0]==0){
+		msg[4]=' ';
+		if(perc[1]==0){
+			msg[5]=' ';
+		}
+		else{
+			msg[5]=perc[1]+'0';
+		}
+	}
+	else{
+		msg[4]=perc[0]+'0';
+		msg[5]=perc[1]+'0';
+	}
+	msg[6]=perc[2]+'0';
+	msg[8]=perc[3]+'0';
+	lenght_da_trasmettere=10;
+	puntatore= msg;
+	i=0;
+	I2C1->ICR |= I2C_ICR_STOPCF;
+	NBYTES = ((lenght_da_trasmettere+3) <<16);
+	I2C1->CR2 &= ~(0xFF<<16);
+	I2C1->CR2 |= NBYTES;
+	I2C1->CR2 |= I2C_CR2_START;
+	j++;
+	break; 
+
+case 26:
+	I2C1->TXDR = 0x80;
+	j++;
+	break;
+
+case 27:
+    //inizio della seconda riga del display
+    I2C1->TXDR = 0xC0;
+    j++;
+    break;
+
+case 28:
+    I2C1->TXDR = 0x40;
+    j++;
+    break;
+case 29: 
+    if(i<lenght_da_trasmettere){
+        I2C1->TXDR = *(puntatore+i);
+    	i++;
+     }
+     else{
+    	//cambio puntatore  
+        //cambio lenght_da_trasmettere
+    	led();
+    	i2c_loops=10000;
+        while(i2c_loops>0){
+        	TIM7->SR=0;
+        	TIM7->CNT=0;
+        	TIM7->CR1|=TIM_CR1_CEN;
+        	while(TIM7->SR==0){}
+        	i2c_loops--;
+        }
+        TIM7->CR1&=~TIM_CR1_CEN;
+        ADC1->CR|=ADC_CR_ADSTART;
+        j=25;
+    }
+     break; 
+\end{lstlisting}
+
+\subsection{ADC}
+Per quanto riguarda l'ADC è stato necessario prima configurarlo ovvero abilitare gli interrupt, eseguire una procedura(leggermente lunga) di calibrazione, selezionare il canale 17 da cui leggere la tensione VREFINT\_DATA, ovvero un valore che permetterà di ottenere un valore più accurato per la tensione della manopola. Una volta letto il dato VREFINT\_DATA si aspetta 1 ms e si legge il dato della manopola, riscalandolo con la seguente formula:
+\begin{equation}
+    V_{channel}=\frac{3.3 \,\cross\,VREFINT\_CAL\,\cross\, V_{channel0} }{VREFINT\_DATA\, \cross\,4095}
+\end{equation}
+Dove VREFINT\_CAL è un valore memorizzato alla cella di memoria \\0x1FFFF7BA al momento della fabbricazione. 
+Una volta calcolato il valore più preciso della tensione della manopola, se ne prendono le 3 cifre più significative e le si memorizzano in vec per essere trasmesse al display \ref{lst:trasm_vec}.
+\begin{lstlisting}[language=C,caption=Gestione interrupt ADC]
+valore=*(uint16_t*)0x1FFFF7BA;
+//controllo se ha finito di convertire
+if((ADC1->ISR & ADC_ISR_ADRDY)!=0){
+	//resetto l'arddy
+	ADC1->ISR|=ADC_ISR_ADRDY;
+	//faccio partire la conversione
+	ADC1->CR|=ADC_CR_ADSTART;	
+}
+if((ADC1->ISR & ADC_ISR_EOC) == ADC_ISR_EOC){
+	if((ADC1->CHSELR & ADC_CHSELR_CHSEL0)!=0){
+		//leggo dal registro ADC DR
+		m=ADC1->DR;
+		//ricalcolo il valore per 1V
+		//m_1 dovrebbe essere circa 1241.2*10
+		m_1=(int)10*(4095*vrefint_data)/(3.3*(valore)); 
+		vec[0]=(int)(m*10/m_1); //m prima cifra
+		resto=(m*10)%m_1;//resto
+		vec[1]=(int)(resto*10/m_1);//m seconda cifra
+		resto=(resto*10)%m_1;//resto
+		vec[2]=(int)(resto*10/m_1);//m terza cifra
+	}
+	else{
+		//leggo il dato per la calibrazione
+		vrefint_data=ADC1->DR;
+	}
+}
+\end{lstlisting}
+
+\begin{lstlisting}[language=C,caption=Inizializzazione ADC]
+ADC1->IER|=ADC_IER_ADRDYIE;
+ADC1->IER|=ADC_IER_EOCIE;
+
+//abilito e configuro l'adc
+//se fosse gia abilitato lo disabilito
+//per fare la calibrazione
+if ((ADC1->CR & ADC_CR_ADEN) != 0)
+{
+	ADC1->CR |= ADC_CR_ADDIS;
+}
+//aspetto che non sia piu enable
+while ((ADC1->CR & ADC_CR_ADEN) != 0){}
+//faccio la calibrazione
+ADC1->CR|=ADC_CR_ADCAL;
+//ed aspetto che abbia finito
+while((ADC1->CR & ADC_CR_ADCAL)==ADC_CR_ADCAL){}
+//se adrdy fosse 1 la metto a 0
+if ((ADC1->ISR & ADC_ISR_ADRDY) != 0)
+{
+	ADC1->ISR |= ADC_ISR_ADRDY;
+}
+//abilito l'adc e spengo il canale 0
+//quindi leggo solo dal 17
+ADC1->CHSELR&=~ADC_CHSELR_CHSEL0;
+ADC1->CR|=ADC_CR_ADEN;
+//verra triggerato l'interrupt quando sara pronto
+
+//adesso dovrebbe essere stato registrato
+//il valore vrefint_data
+//aspetto 1 millisecondo
+loops=1;
+wait_tim();
+
+//cambio il canale da cui leggere il dato nell'adc
+ADC1->CHSELR&=~ADC_CHSELR_CHSEL17;
+ADC1->CHSELR|=ADC_CHSELR_CHSEL0;
+//faccio ripartire la lettura
+ADC1->CR|=ADC_CR_ADSTART;
+\end{lstlisting}
+
+\section{Orologio, progetto personale}
+
 \end{document}
