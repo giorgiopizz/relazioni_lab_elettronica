@@ -4,16 +4,29 @@
 \chapter{Microcontrollore 8051}
 
 \section{Introduzione al microcontrollore 8051}
-Il microcontrollore 8051, il primo dei due usati in questo corso ha una struttura di tipo Harvard(come tutti i microcontrollori). 
+Il microcontrollore 8051, il primo dei due usati in questo corso, ha una struttura di tipo Harvard. Le sue caratteristiche principali sono riassunte qui di seguito:
 \begin{itemize}
-    \item memoria programmi distinta memoria dati, alcuni anche doppio bus
-    \item 8bit
-    \item interrupt non nested
-    \item assembly
-    
+    \item memoria programmi distinta da memoria dati e anche doppio bus(uno dedicato alla FLASH e l'altro dedicato alla RAM)
+    \item 8bit(celle di memoria a 8 bit ma indirizzamento a 16 bit)
+    \item Gestione di interrupt nidificati in ordine di priorità(ma senza l'ausilio di un NVIC (nested vector interrupt controller) dedicato)
+    \item Stack da dichiarare(per gestire la chiamata di sottoprogrammi)
+    \item Programmazione in Assembly e C 
 \end{itemize}
 
+\subsection{Paradigma ad 8 bit}
+Il paradigma ad 8 bit è implementato nel seguente modo nell'8051:
+\begin{itemize}
+    \item Le celle di memoria sono ad 8 bit
+    \item La memoria interna RAM è limitata a 256 byte, quindi saranno 256 celle che possono essere indirizzate con soli 8 bit($2^8=256$)
+    \item La memoria interna programmi(di tipo flash) essendo indirizzata a 16 bit può arrivare a 64KB, ($2^{16}=65536$ celle di memoria da 1 byte)
+\end{itemize}
+L'indirizzamento a 16 bit è reso possibile dalla presenza di un latch, il quale in un primo momento, mantenendo alta la sua linea di enable, memorizza la parte alta o \textbf{bassa} dell'indirizzo(prende gli 8 bit, più o meno significativi), poi mantenendo bassa la sua linea, mette a disposizione del bus indirizzi il dato che memorizzato, il quale, insieme agli 8 bit rimanenti forniti dal micro va a formare un indirizzo a 16 bit.
+
+La memoria programmi usata è del tipo FLASH, il che permette di scrivere e cancellare più volte il programma, cosa necessaria durante lo sviluppo. 
+
+
 \subsection{Configurazione del micro}
+
 Qui di seguito viene riportata la configurazione generica eseguita all'inizio di ogni esperienza con l'8051.
 
 Il primo passo per configurare il microcontrollore è disattivare il watchdog. Per fare ciò viene usato il Configuration Wizard. All'interno di questo software viene creato un file assembly che viene incluso nel progetto del'8051 ed eseguito all'inizio del main mettendo in funzione tutte le periferiche interessate. Un ulteriore step da fare in fase di configurazione è quello di indicare al micro una sorgente esterna per il clock. La sorgente che useremo è un cristallo oscillatore che ha una frequenza di 22.1184 MHz. Questo passaggio è necessario per garantire al micro di avere una frequenza di clock più precisa in quanto quella interna è di ($2\pm0.02$)MHz.
@@ -327,13 +340,33 @@ msg_ricevuto[1]=LF;
 while(1);
 \end{lstlisting}
 %aggiungere esperienza con oscilloscopio
+È stato collegato l'oscilloscopio ai pin dedicata all'UART per controllare il segnale trasmesso. Sono stati ottenuti i seguenti grafici:
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{a_binario.PNG}
+    \caption{'a' in binario}
+    \label{fig:a}
+\end{figure}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{b_binario.PNG}
+    \caption{'b' in binario}
+    \label{fig:b}
+\end{figure}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{c_binario.PNG}
+    \caption{'c' in binario}
+    \label{fig:c}
+\end{figure}
+I messaggi che sono stati trasmetti dell'Hyperterminal al micro sono 'a', 'b' e 'c', che vengono trasformati in binario(rispettivamente 01100001, 01100010, 01100011), e mandati tramite il pin di trasmissione. Come si puù vedere ci sono i bit di start e quelli di stop.
 
 \subsection{Seriale in assembly}
 
 Questo semplice programma, è una piccola variante di quello precedente in cui si vuole imparare a gestire un vettore in Assembly. Infatti ciò che si definisce è un vettore nella memoria programmi, questo perché il vettore non verrà modificato ma solo letto, contenente il messaggio di benvenuto. L'indirizzo del vettore viene poi passato, subito dopo la configurazione del micro, al Data Pointer. Viene successivamente implementata una funione NEXT che salva nell'Accumulator il carattere successivo in modo tale che sia accessibile dal main del programma in c. Dunque nel programma in C basterà chiamare questa funzione e prendere il carattere contenuto in A e trasmetterlo. 
 
 
-\begin{minipage}{0.50\textwidth}
+\begin{minipage}{0.49\textwidth}
 \begin{lstlisting}[caption=Vettore in Assembly]
 VETTORE SEGMENT CODE
 STACK SEGMENT IDATA
@@ -354,11 +387,12 @@ END
 \end{lstlisting}
 \end{minipage}%
 \hfill
-\begin{minipage}{0.50\textwidth}
-\begin{tabular}{|p{\textwidth}}
+\begin{minipage}{0.49\textwidth}
+\begin{tabular}{|p{0.8\textwidth}}
 \begin{lstlisting}[caption=codice in C]
 NEXT();
-*puntatore =(uchar)ACC;
+*puntatore=
+(uchar)ACC;
 \end{lstlisting}
 \end{tabular}
 \end{minipage}%

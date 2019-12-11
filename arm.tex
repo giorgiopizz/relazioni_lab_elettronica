@@ -1,9 +1,17 @@
 \documentclass[main.tex]{subfiles}
 \begin{document}
-\chapter{ARM}
+\chapter{STM32}
 \section{Introduzione ai micro ARM e CORTEX}
+\begin{itemize}
+    \item Sono RISC(reduced instruction set)
+    \item 1 colpo di clock ad istruzione(contro i 12 in media dell'8051)
+    \item 32 bit
+    \item Istruzioni di lunghezza fissata per avere velocità fissa
+    \item Ogni operando per essere processato viene prima prelevato dalla memoria e salvato nei registri interni del micro secondo la filosofia Load-Store
+    \item Pipeline per poter iniziare ad eseguire un'istruzione prima che sia terminata l'esecuzione dell'ultima istruzione.
+\end{itemize}
 \subsection{Configurazione del micro}
-
+La configurazione del'STM32 avviene attraverso il programma CUBE MX, il quale propone anche una visualizzazione grafica dei pin della scheda. Al contrario di quanto accadeva con l'8051 per questo micro non è necessario disabilitare il watchdog o tantomeno avere una configurazione comune a tutte le esperienze.
 \section{Seriale}
 L'esperienza della seriale è del tutto analoga a quella con l'8051, il programma è diviso in 3 fasi:\begin{enumerate}
     \item Nella prima fase si trasmette un messaggio di benvenuto al computer
@@ -332,7 +340,7 @@ I2C1->CR2 |= I2C_CR2_START;
 
 Una volta inizializzato il display si può procedere con la trasmissione dei messaggi che si vuole visualizzare. Sono due i messaggi, uno indicante la temperatura ed uno indicante il potenziale della manopola(in una seconda versione verrà riportata la percentuale invece della tensione). Il primo messaggio da mandare è quello relativo alla temperatura per semplicità del codice, infatti dopo che sono stati trasmessi i due messaggi ogni 10 secondi verrà verificata la posizione della manopola aggiornando il valore della tensione. Occorre prima leggere la temperatura, impostando l'i2c in lettura di 2 bytes. Ciò viene fatto dentro all'interrupt dell'i2c.
 
-\begin{lstlisting}[language=C,caption=Lettura temperatura]
+\begin{lstlisting}[language=C,caption=Lettura temperatura,label={lst:display_temp}]
 //definisco il messaggio della temperatura
 char temp[]={'T','e','m','p',':','.','.','.','.'};
 
@@ -578,7 +586,455 @@ ADC1->CHSELR|=ADC_CHSELR_CHSEL0;
 //faccio ripartire la lettura
 ADC1->CR|=ADC_CR_ADSTART;
 \end{lstlisting}
+Per controllare la correttezza della tensione letta dall'ADC si è ricorsi all'ausilio di un multimetro da banco e confrontando i valori letti dai due strumenti riportati di seguito, è stata estrapolata un'equazione per correggere i valori letti, in modo che fossero più simili.
 
+
+\begin{center}
+\begin{tabular}{ | c | c| } 
+\hline
+Pot. ADC & Pot. Multimetro\\
+\hline
+0.000830151 & -0.0028 \\
+0.601029    & 0.5634  \\
+0.865847588 & 0.8286  \\
+1.224473    & 1.1926  \\
+1.80557859  & 1.787   \\
+2.04217172  & 2.0355  \\
+2.51702     & 2.5137  \\
+2.7287066   & 2.7105  \\
+2.80674076  & 2.7833  \\
+2.80425048  & 2.783   \\
+2.92545247  & 2.884   \\
+3.00681     & 2.9576  \\
+3.04998     & 2.9955  \\
+3.13049984  & 3.0541  \\
+3.25087166  & 3.1632  \\
+3.36460233  & 3.2657  \\
+3.39946866  & 3.3087 \\
+\hline
+\end{tabular}
+\end{center}
+\includegraphics[width=\textwidth]{correzione_adc.png}
+La relazione usata è 
+\begin{equation}
+    V_{corretto}=0.9834\,V_{adc}+0.0026
+\end{equation}
 \section{Orologio, progetto personale}
+Mantenendo le stesse configurazioni adottate nell'esperienza del display e del termometro si è deciso per sperimentare le funzionalità del micro e per sfruttare il display di scrivere un programma per un orologio da polso con delle funzionalità base. L'applicativo prevede 4 sezioni:
+\begin{itemize}
+    \item Orologio
+    \item Termometro
+    \item Cronometro
+    \item Impostazioni
+\end{itemize}
+e l'utente può navigare tra queste sezioni attraverso il bottone e la manopola del potenziometro. 
+Per quanto riguarda il termometro è stato sfruttato il codice precedentemente scritto \ref{lst:display_temp}. Invece è stato necessario sviluppare un codice per implementare le funzionalità di orologio vero e proprio. Innanzitutto si crea un vettore contenente tutte le informazioni su data e ora(int ora[]=\{2,0,1,9,1,1,2,3,1,9,2,8,0,0\};) in formato Years, Month, Day, Hours, Minutes, Seconds, questo vettore ad ogni secondo dovrà essere modificato con la funzione dedicata: ad ogni secondo aumentano i secondi, se si è raggiunto il fondo scala aumentano i minuti, se anche i minuti hanno raggiunto il fondo scala si aumentano le ore e così via fino agli anni. Chiaramente a seconda del mese il fondo scala dei giorni cambia, a gennaio si piò arrivare fino a 31 mentre a febbraio di un anno bisestile fino a 29. La funzione \textit{void incrementa()} tiene conto di tutte queste eventualità e viene riportata di seguito:
+\begin{lstlisting}[caption=Funzione incrementa(),language=C]
+void incrementa(){
+	if(ora[13]==9){
+		//cifra meno significativa dei secondi
+		ora[13]=0;
+		//aumento ora[12]
+		if(ora[12]==5){
+			//cifra piu significativa dei secondi
+			ora[12]=0;
+			//aumento ora[11]
+			if(ora[11]==9){
+				//cifra meno significativa dei minuti
+				ora[11]=0;
+				//aumento ora[10]
+				if(ora[10]==5){
+					//cifra piu significativa dei minuti
+					ora[10]=0;
+					//aumento di un'ora
+					hour=ora[9]+ora[8]*10;
+					if(hour==23){
+						ora[9]=0;
+						ora[8]=0;
+						//aumento di un giorno
+						change_big_date=1;
+						day=ora[7]+ora[6]*10;
+						month=ora[5]+ora[4]*10;
+				    year=ora[0]*1000+ora[1]*100+ora[2]*
+				    10+ora[3];
+						if((year%100==0 && year%400==0)||
+						(year%100!=0 && year%4==0)){
+							bisestile=1;
+						}
+						if((day==31 && (month==1|| month==3 ||
+						month==5 || month==7 || month==8 ||
+						month==10 || month==12))||
+						(day==30 &&(month==4|| month==6 ||
+						month==9 || month==11))||
+						(day==28 && month==2 && !bisestile)||
+						(day==29 && month==2 && bisestile)){
+							ora[6]=0;
+							ora[7]=1;
+							//aumento il il mese
+							if(month==12){
+								ora[4]=0;
+								ora[5]=1;
+								//aumento l'anno
+								year++;
+								//scompongo year su ora
+								ora[0]=(int)year/1000;
+								resto=year%1000;
+								ora[1]=(int)(resto*10)/1000;
+								resto=(resto*10)%1000;
+								ora[2]=(int)(resto*10)/1000;
+								resto=(resto*10)%1000;
+								ora[3]=(int)(resto*10)/1000;
+							}
+							else{
+								month++;
+								ora[4]=(int)month/10;
+								resto=month%10;
+								ora[5]=(int)(resto*10)/10;
+							}
+						}
+						else{
+							day++;
+							ora[6]=(int)day/10;
+							resto=day%10;
+							ora[7]=(int)(resto*10)/10;
+						}
+					}
+					else{
+						hour++;
+						ora[8]=(int)hour/10;
+						resto=hour%10;
+						ora[9]=(int)(resto*10)/10;
+					}
+				}
+				else{
+					ora[10]++;
+				}
+			}
+			else{
+				ora[11]++;
+			}
+		}
+		else{
+			ora[12]++;
+		}
+	}
+	else{
+		ora[13]++;
+	}
+}
+\end{lstlisting}
+La funzione incrementa verrà chiamata dall'interrupt dell'i2c, quando potremo trasmettere la nuova ora, ovvero ad ogni secondo. Il cronometro funzionerà in maniera del tutto analoga, ad ogni secondo verrà chiamata un'altra funzione incrementa che però è decisamente più semplice non dovendo tener conto di giorni mesi e anni bisestili. 
+All'interno dell'interrupt dell'i2c dovrà essere presente una funzione per discernere cosa fare, si configurano diverse possibilità:
+\begin{itemize}
+    \item Trasmettere il menu
+    \item Trasmettere il contenuto di una delle sezioni
+\end{itemize}
+Per trasmettere il menu si è proceduto nel seguente modo: aspettando che si sia finito di trasmettere il nome della prima sezione(Orologio) si legge il valore dall'adc e si confronta con dei valori di riferimento per vedere in quale delle 4 sezioni la manopola è girata. Si interpreta l'orientazione della manopola e si trasmette il titolo della sezione associata, se la manopola rimane fissa conclusa questa trasmissione non si fa nulla, altrimenti periodicamente si cambia il titolo. Per entrare in una delle sezioni si preme il tasto blu(quello dedicato agli utenti). A questo punto la funzione dell'i2c trasmetterà il contenuto della sezione opportuno. 
+La sezione impostazioni funziona in maniera simile a quella del menu. Essa è adibita ad impostare l'ora e il giorno dell'orologio, quindi per velocizzare il processo si è pensato di sfruttare la manopolina per far selezionare all'utente la cifra desiderata. Ovvero partendo dalla cifra più significativa degli anni l'utente ruoterà la manopolina, a seconda di quanto viene ruotata sul display viene fatta vedere la cifra corrispondente(da 0 a 9) e premendo il pulsante si passa alla cifra successiva fino ad arrivare alla fine dove viene chiesta la conferma all'utente, girando la manopola tutta a sinistra e premendo il tasto viene confermata l'operazione, girandola a destra e premendo si ripete.
+\begin{lstlisting}[caption=Porzione codice impostazioni, language=C]
+else if(menu==1 && sezione==3){
+		if(!trasmesso){
+			i2c_loops=10;
+				while(i2c_loops>0){
+				TIM7->SR=0;
+				TIM7->CNT=0;
+				TIM7->CR1|=TIM_CR1_CEN;
+				while(TIM7->SR==0){}
+				i2c_loops--;
+				}
+				TIM7->CR1&=~TIM_CR1_CEN;
+				
+				switch(j){
+					case(16):
+						I2C1->ICR |= I2C_ICR_STOPCF; 
+					I2C1->CR2 &= ~I2C_CR2_RD_WRN;
+					I2C1->CR2 &= ~0xFF; 
+					I2C1->CR2 |= LCD_ADDRESS; 
+					NBYTES = (2 <<16); 
+					char_da_trasmettere=2;
+					I2C1->CR2 &= ~(0xFF<<16); 
+					I2C1->CR2 |= NBYTES;
+					I2C1->CR2 |= I2C_CR2_START; 
+					j++;
+					case(17):
+						I2C1->TXDR=0x00;
+						j++;
+						char_da_trasmettere--;
+						break;
+					case(18):
+						I2C1->TXDR=0x01;
+						j++;
+						char_da_trasmettere--;
+						break;
+					case(19):
+						if((I2C1->ISR & I2C_ISR_STOPF)!=0){
+						char_da_trasmettere=2;
+						I2C1->ICR |= I2C_ICR_STOPCF; 
+						I2C1->CR2 |= I2C_CR2_START; 
+						j++;}
+						break;
+					case(20):
+						I2C1->TXDR=0x00;
+						j++;
+						char_da_trasmettere--;
+						break;
+					case(21):
+						I2C1->TXDR=0x02;
+						j++;
+					char_da_trasmettere--;
+						break;
+				
+				case 22:
+					I2C1->ICR |= I2C_ICR_STOPCF;
+					I2C1->CR2 &= ~I2C_CR2_RD_WRN;
+					I2C1->CR2 &= ~0xFF; 
+					I2C1->CR2 |= LCD_ADDRESS; 
+					NBYTES = ((lenght_da_trasmettere+3) <<16); 
+					char_da_trasmettere=lenght_da_trasmettere+3;
+					I2C1->CR2 &= ~(0xFF<<16); 
+					I2C1->CR2 |= NBYTES;
+					I2C1->CR2 |= I2C_CR2_START;
+					j++;
+					break;
+				case 23:
+					I2C1->TXDR = 0x80;
+					j++;
+					char_da_trasmettere--;
+					break;
+				case 24:
+				 I2C1->TXDR = 0x80;
+				 j++;
+					char_da_trasmettere--;
+				 break;
+				case 25:
+				 I2C1->TXDR = 0x40; 
+				 j++;
+				char_da_trasmettere--;
+				 break;
 
+				case 26:
+				 if(i<lenght_da_trasmettere){
+						I2C1->TXDR = *(puntatore+i);
+						i++;
+					 char_da_trasmettere--;
+				 }
+				 else{
+						j++;
+					 trasmesso=1;
+				 }
+				 break;
+			 }
+		}
+		else if(trasmesso){
+			if(loaded==1){
+				if(numero_adc!=numero_precedente){
+					switch(numero_adc){
+						case(0):
+							puntatore=num+0;
+							lenght_da_trasmettere=1;
+							break;
+						case(1):
+							puntatore=num+1;
+							lenght_da_trasmettere=1;
+							break;
+						case(2):
+							puntatore=num+2;
+							lenght_da_trasmettere=1;
+							break;
+						case(3):
+							puntatore=num+3;
+							lenght_da_trasmettere=1;
+							break;
+							case(4):
+							puntatore=num+4;
+							lenght_da_trasmettere=1;
+							break;
+								case(5):
+							puntatore=num+5;
+							lenght_da_trasmettere=1;
+							break;
+									case(6):
+							puntatore=num+6;
+							lenght_da_trasmettere=1;
+							break;
+						case(7):
+							puntatore=num+7;
+							lenght_da_trasmettere=1;
+							break;
+							case(8):
+							puntatore=num+8;
+							lenght_da_trasmettere=1;
+							break;
+								case(9):
+							puntatore=num+9;
+							lenght_da_trasmettere=1;
+							break;
+					}
+					i=0;
+					j=16;
+					
+					trasmesso=0;
+					numero_precedente=numero_adc;
+				}
+				loaded=0;
+			}
+			else if(loaded==0){
+				I2C1->CR1&=~I2C_CR1_RXIE;
+				I2C1->CR1&=~I2C_CR1_TXIE;
+				I2C1->CR2&=~I2C_CR2_AUTOEND;
+				I2C1->CR1&=~I2C_CR1_STOPIE;
+				ADC1->IER|=ADC_IER_EOCIE;
+				ADC1->CR|=ADC_CR_ADSTART;
+				loaded=1;
+			}
+		}
+	}
+\end{lstlisting}
+È stata presa una precauzione se l'interrupt del bottone o dell'adc interrompesse la trasmissione di un messaggio, salvando il numero di caratteri che si deve ancora trasmettere. Nel caso si debba trasmettere un nuovo messaggio e siano rimasti dei caratteri vecchi da mandare si mandano caratteri a caso per poi cancellare e mandare il messaggio che si vuole mandare. 
+Qui di seguito viene riportato il codice per il menu
+\begin{lstlisting}[caption=Menu, language=C]
+switch(menu){
+	case(1):
+		//faccio il display dei menu
+		menu=0;
+		loaded=0;
+		trasmesso=0;
+		j=16;
+		scelta_precedente=0;
+		puntatore=menu_1;
+		lenght_da_trasmettere=8;
+		i=0;
+		i2c_loops=0;
+		status=0;
+		break;
+	case(0):
+		menu=1;
+		sezione=scelta_adc;
+		i2c_loops=0;
+		switch(sezione){
+			case(0):
+				msg_2[0]=ora[6]+'0';
+				msg_2[1]=ora[7]+'0';
+				msg_2[3]=ora[4]+'0';
+				msg_2[4]=ora[5]+'0';
+				msg_2[6]=ora[0]+'0';
+				msg_2[7]=ora[1]+'0';
+				msg_2[8]=ora[2]+'0';
+				msg_2[9]=ora[3]+'0';
+				puntatore=msg_2;
+				lenght_da_trasmettere=10;
+				j=16;
+				i=0;
+				break;
+			case(1):
+				i=0;
+				j=16;
+                break;
+			case(3):
+				loaded=0;
+				trasmesso=0;
+				j=16;
+				numero_precedente=0;
+				puntatore=num;
+				lenght_da_trasmettere=1;
+				i=0;
+				i2c_loops=0;
+				status=1;
+                break;
+		}
+		break;
+}
+\end{lstlisting}
+
+\section{Campionamento con ADC}
+Questa esperienza serve a comprendere il campionamento dell'adc come può avvenire in un qualsiasi esperimento di fisica. È stato quindi abilitato l'adc con il timer 1 come trigger(ad ogni overflow del timer1 l'adc, se è pronto, converte). È stata anche abilitata la usart2 per il trasferimento dei dati campionati. 
+Si configurano due possibilità per svolgere queste esperienza, ogni volta che viene convertito un dato lo si trasmette al computer, oppure si memorizzano N dati in un vettori e poi li si spedisce. 
+Dipende tutto dalle esigenze dell'esperimento, usando la prima configurazione si ha il collo di bottiglia dell'usart2 ad ogni campionamento dovendo aspettare 1ms(~10 bit da mandare con velocità 9600bit/s), quindi se si vuole campionare bene un segnale a frequenze estremamente elevate essendo necessario avere una frequenza almeno doppia per il campionamento impedisce di avere segnali con frequenze maggiori di 500Hz. Nel codice seguente è stata adottata la seconda configurazione. 
+A differenza di quando l'adc veniva triggerato solo via software qui si può usare anche il timer1 attraverso il suo CEN(counter enable). 
+\begin{lstlisting}[caption=Interrupt ADC, language=C]
+if((ADC1->ISR & ADC_ISR_ADRDY)!=0){
+        //resetto l'arddy
+        ADC1->ISR|=ADC_ISR_ADRDY;
+        ADC1->CR|=ADC_CR_ADSTART;
+}
+if((ADC1->ISR & ADC_ISR_EOC) == ADC_ISR_EOC){
+    if((ADC1->CHSELR & ADC_CHSELR_CHSEL0)!=0){
+	    //leggo dal registro ADC_DR
+        m=ADC1->DR;
+        if(j<size){
+            //aggiungo a small_values
+            values[j]=(uint32_t)m;
+            j++;
+        }
+        else{
+            //ho finito di campionare
+            ADC_CC=1;//adc conversion complete
+            return;
+        }
+    }
+    else{
+        //leggo il dato per la calibrazione
+        vrefint_data=ADC1->DR;
+        ADC1->CHSELR&=~ADC_CHSELR_CHSEL17;
+        ADC1->CHSELR|=ADC_CHSELR_CHSEL0;
+        ADC1->CR|=ADC_CR_ADSTART;
+    }
+}
+TIM1->CR1&=~TIM_CR1_CEN;
+TIM1->CNT=0;
+TIM1->CR1|=TIM_CR1_CEN;
+\end{lstlisting}
+All'interno dell'interrupt della usart2 bisogna trasmettere tutti i dati letti, si inizia nel main trasmettendo il valore vrefint letto dalla memoria, successivamente viene mandata la tensione letta al channel 17, e poi a cascata tutti i valori del segnale. Il formato dei dati mandati è un numero che va da 0 a 4095(0,FFF), separati da una newline. 
+\begin{lstlisting}[caption=Interrupt USART2, language=C]
+if((USART2->ISR & USART_ISR_TC) == USART_ISR_TC){
+		//resetto il flag
+		USART2->ICR |= USART_ICR_TCCF;
+		//allora ho appena finito di trasmettere
+		
+			//trasmetto valore
+			i++;
+			if(i<lenght_da_trasmettere){
+				USART2->TDR=*(puntatore+i);
+			}
+			else{
+				if(j==-2){
+						j++;
+						m=vrefint_data;
+				}
+				else if(j<size-1){
+						j++;
+						m=values[j];
+				}
+				else{
+					i=0; 
+					return;
+				}
+				
+				m_1=1000;
+				msg[0]=(int)(m/m_1)+'0'; //m prima cifra
+				resto=(m)%m_1;//resto
+				msg[1]=(int)(resto*10/m_1)+'0';//seconda cifra
+				resto=(resto*10)%m_1;//resto
+				msg[2]=(int)(resto*10/m_1)+'0';//m terza cifra
+				resto=(resto*10)%m_1;
+				msg[3]=(int)(resto*10/m_1)+'0';//quarta
+				puntatore=msg;
+				USART2->TDR=*puntatore;
+				i=0;
+			}
+	}
+\end{lstlisting}
+È stato scritto un piccolo script in python per la conversione dei dati raccolti in un file dall'hyperterminal. 
+\begin{lstlisting}[caption=script.py,language=Python]
+with open("dati_seriale.txt","r") as file:
+    line=file.readline()
+    cnt=1
+    while line:
+        if line!='\n':
+            a=int(line)
+            b=3.3*a/4095
+            print("Line{}: {}".format(line.strip(),b))
+        line=file.readline()
+        cnt+=1
+\end{lstlisting}
 \end{document}
