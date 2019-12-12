@@ -278,9 +278,9 @@ la tensione registrata da un potenziometro a manopola letto dall'adc.
 
 \subsection{I2C}
 
-Essendo l'I2C triggerato sia quando si sta inizializzando il display, sia quando si sta leggendo la temperatura sia quando si deve trasmettere la temperatura letta, si è ritenuto necessario l'ausilio di , simile a quella già implementata in \ref{lst:scelta} e in \ref{lst:scelta_due}.
+Essendo l'I2C triggerato sia quando si sta inizializzando il display, sia quando si sta leggendo la temperatura sia quando si deve trasmettere la temperatura letta, si è ritenuto necessario l'ausilio di uno switch, simile a quello già implementato in \ref{lst:scelta} e in \ref{lst:scelta_due}.
 L'interrupt viene triggerato nei seguenti casi:\begin{enumerate}
-    \item Si è specificato di voler trasmettere NBYTES di caratteri e la trasmissione si è conclusa(STOPIE)
+    \item Si è specificato di voler trasmettere \textit{NBYTES} di caratteri e la trasmissione si è conclusa(STOPIE)
     \item Si è inviato un singolo carattere e la trasmissione è andata a buon fine(TXIE)
     \item Si è specificato di voler leggere un dato che è stato ricevuto(RXIE)
 \end{enumerate}
@@ -1042,7 +1042,55 @@ with open("dati_seriale.txt","r") as file:
             print("Line{}: {}".format(line.strip(),b))
         line=file.readline()
         cnt+=1
+with open("dati_seriale_convertiti.txt","w") as file:
+    #vengono esclusi i primi 3 valori per calibrazione
+    for i in range(3,len(vec)):
+        file.write("{}, {}\n".format(i,vec[i]))
 \end{lstlisting}
+Il grafico sotto riporta i dati convertiti, sulle ascisse abbiamo il tempo in $\mu s$ mentre sulle ordinate i volt. Il segnale in ingresso, analizzando con l'oscilloscopio, oscillava tra 1.7 e 2.3 con una frequenza di circa 600Hz come nel grafico.
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{grafico_adc.png}
+    \caption{Grafico dati convertiti}
+    \label{fig:grafico_adc}
+\end{figure}
+Tenendo conto anche dei valori di calibrazione il codice di conversione diventa:
+\begin{lstlisting}[caption=script(cal).py,language=python]
+with open("dati_seriale.txt","r") as file:
+    line=file.readline()
+    cnt=1
+    vrefint_cal=0
+    vrefint_data=0
+    vec=[]
+    while line:
+        if line!='\n':
+            a=int(line)
+            if(cnt==1):
+                vrefint_cal=a
+            elif(cnt==2):
+                vrefint_data=a
+            else:
+                b=3.3*vrefint_cal*a/\
+                (4095*vrefint_data)
+                vec.append(b)
+                print("Line{}: {}".format\
+                (line.strip(),b))
+            cnt+=1
+        line=file.readline()
+        
+with open("dati_seriale_convertiti.txt","w") as file:
+    for i in range(1,len(vec)):
+        file.write("{}, {}\n".format(i,vec[i]))
+
+\end{lstlisting}
+ottenendo il grafico 
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{grafico_adc_cal.png}
+    \caption{Grafico dati con calibrazione}
+    \label{fig:grafico_adc_cal}
+\end{figure}
+
 Se avessimo invece usato la prima configurazione, trasmettendo il dato ogni qualvolta se ne convertisse uno, sarebbe stato più conveniente dividere i due bytes letti dall'adc in 8 bit, prendendo la parte alta e quella bassa, questo perché la usart può spedire 8 bit per volta. 
 Per dividere in due bit sarebbe stato sufficiente:
 \begin{lstlisting}[caption= Divisione dei 2 byte da inviare, language=C]
