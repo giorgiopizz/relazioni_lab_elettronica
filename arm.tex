@@ -11,14 +11,17 @@
     \item Pipeline per poter iniziare ad eseguire un'istruzione prima che sia terminata l'esecuzione dell'ultima istruzione.
 \end{itemize}
 \subsection{Configurazione del micro}
-La configurazione del'STM32 avviene attraverso il programma CUBE MX, il quale propone anche una visualizzazione grafica dei pin della scheda. Al contrario di quanto accadeva con l'8051 per questo micro non è necessario disabilitare il watchdog o tantomeno avere una configurazione comune a tutte le esperienze.
+La configurazione del'STM32 avviene attraverso il programma CUBE MX, il quale propone anche una visualizzazione grafica dei pin della scheda. Al contrario di quanto accadeva con l'8051 per questo micro non è necessario disabilitare il watchdog o nemmeno avere una configurazione comune a tutte le esperienze.
+
 \section{Seriale}
-L'esperienza della seriale è del tutto analoga a quella con l'8051, il programma è diviso in 3 fasi:\begin{enumerate}
+
+L'esperienza della seriale è del tutto analoga a quella con l'8051, il programma è diviso in 3 fasi:
+\begin{enumerate}
     \item Nella prima fase si trasmette un messaggio di benvenuto al computer
     \item Nella seconda fase il micro entra in modalità eco, ritrasmettendo indietro tutti i caratteri che gli si mandano
-    \item Infine riceve una serie di caratteri memorizzandoli e poi rimandando il messaggio ricevuto
+    \item Infine riceve una serie di caratteri memorizzandoli e poi rimandanda il messaggio ricevuto
 \end{enumerate}
-Per la USART è stata usata la USART2 del micro abilitandola dal STM32Cube e se ne è abilitato l'interrupt nel NVIC(Nested Vector Interrupt Controller), questo perché la USART2 è già implementata nell'STLink quindi la comunicazione avviene tramite il cavo mini-USB. 
+Per la USART è stata usata la USART2 del micro abilitandola dal CUBE e se ne è abilitato l'interrupt nel NVIC(Nested Vector Interrupt Controller), questo perché la USART2 è già implementata nell'STLink quindi la comunicazione avviene tramite il cavo mini-USB. 
 
 Un'ulteriore differenza con l'8051 è che il buffer per la trasmissione e per la ricezione sono distinti(il che probabilmente rende più chiaro anche il codice) e sono rispettivamente \textit{TDR} e \textit{RDR}. 
 
@@ -150,10 +153,12 @@ void scelta(){
 	}
 }
 \end{lstlisting}
-\section{Timer7 e Led}
-Questa esperienza è analoga a quella svolta con il led ed il bottone per l'8051 in C(referenza:\ref{led in C}). Infatti l'obiettivo è di realizzare un programma in cui si possa cambiare la luminosità del LED sfruttando gli interrupt del timer del micro ed il bottone. Dunque è stato configurato il Timer 7(TIM7) a 16 bit e l'overflow a 10000(quindi il timer conta da 0 a 10000), con il relativo interrupt. Abbiamo abilitato la porta PA5 come GPIO output per poter accendere e spegnere il led, ed è stato abilitato l'interrupt esterno della porta PC13(il bottone), di modo che ogni volta che viene premuto, viene generato un interrupt.
 
-La funzione wait\_tim aspetta che il timer abbia raggiunto n interrupt, facendo trascorrere un po' di tempo.
+\section{Timer7 e Led}
+
+Questa esperienza è analoga a quella svolta con il led ed il bottone per l'8051 in C(referenza:\ref{led in C}). Infatti l'obiettivo è di realizzare un programma in cui si possa cambiare la luminosità del LED sfruttando gli interrupt del timer del micro ed il bottone. Dunque è stato configurato il Timer 7(TIM7) a 16 bit e l'overflow a 10000(quindi il timer conta da 0 a 10000), con il relativo interrupt(clock fisso a 48MHz). Abbiamo abilitato la porta PA5 come GPIO output per poter accendere e spegnere il led, ed è stato abilitato l'interrupt esterno della porta PC13(il bottone), di modo che ogni volta che viene premuto, viene generato un interrupt.
+
+La funzione wait\_tim aspetta che il timer abbia raggiunto n overflow, facendo trascorrere un po' di tempo.
 \begin{lstlisting}[language=C, caption=Funzione wait\_tim per aspettare]
 void wait_tim(){
 	wait=1;
@@ -178,7 +183,7 @@ else{
 }
 \end{lstlisting}
 
-All'interno dell'interrupt del bottone è necessario cambiare la luminosità, questo come nel caso della luminosità in C\ref{lst:led in C}, viene fatto cambiando il numero di loop che il led sta accesso ovvero la variabile \textit{loop\_on}. Come nel caso del C, la variabile status indica 5 possibili luminosità(0,25,50,75,100), ciclando su di essi.
+All'interno dell'interrupt del bottone è necessario cambiare la luminosità, questo come nel caso della luminosità in C\ref{lst:led in C}, viene fatto cambiando il numero di loop che il led sta acceso ovvero la variabile \textit{loop\_on}. Come nel caso del C, la variabile status indica 5 possibili luminosità(0,25,50,75,100), ciclando su di essi.
 \begin{lstlisting}[language=C, caption=Gestione interrupt del bottone]
 if(status<4){
 	status++;
@@ -260,14 +265,15 @@ Per una seconda parte dell'esperienza è stata anche attivata la USART2 come nel
 
 Descrizione del programma I2C display termometro. 
 L'obiettivo di questo programma è scrivere su un display la temperatura registrata dal termometro e 
-il potenziale registrato da un potenziometro a manopola letto dall'adc.
-è necessario dividere il programma in più parti:
+la tensione registrata da un potenziometro a manopola letto dall'adc.
+È necessario dividere il programma in più parti:
 \begin{itemize}
     \item Leggere dall'ADC il potenziale
     \item Inizializzare il display
     \item Leggere la temperatura dal termometro
     \item Trasmettere al display la temperatura
     \item Trasmettere al display il potenziale
+    \item Rileggere la tensione della manopola ogni $\tau$ secondi
 \end{itemize}
 
 \subsection{I2C}
@@ -278,7 +284,7 @@ L'interrupt viene triggerato nei seguenti casi:\begin{enumerate}
     \item Si è inviato un singolo carattere e la trasmissione è andata a buon fine(TXIE)
     \item Si è specificato di voler leggere un dato che è stato ricevuto(RXIE)
 \end{enumerate}
-Per inizializzare correttamente il display è necessario mandargli una serie di comandi ed impostazioni intervellate da 1 ms. Per questa ragione è necessario che la comunicazione avvenga per blocchi di 2 bytes, 1 byte per dire al display che quello successo è un comando ed 1 byte per il comando. Tra i blocchi da 2 bytes si attendono per sicurezza 100ms, poi si pulisce la stop flag e si fa ripartire la comunicazione. 
+Per inizializzare correttamente il display è necessario mandargli una serie di comandi ed impostazioni intervallate da 1 ms. Per questa ragione è necessario che la comunicazione avvenga per blocchi di 2 bytes, 1 byte per dire al display che quello successo è un comando ed 1 byte per il comando(Si mandano comandi del tipo 0x00 quindi due esadecimali, comb. possibili$=16*16=256=2^8$ quindi 1 char). Tra i blocchi da 2 bytes si attendono per sicurezza 100ms, poi si pulisce la stop flag e si fa ripartire la comunicazione. 
 Per rendere più facilmente interpretabile lo stato del micro, alla conclusione di ogni sezione di codice vengono accesi i led.
 \begin{lstlisting}[language=C, caption=Gestione Interrupt I2C per inizializzazione Display]
 if((I2C1->ISR & I2C_ISR_STOPF)!=0){
@@ -312,7 +318,7 @@ if (j<16){
 }
 \end{lstlisting}
 Per far partire l'inizializzazione è necessario prima abilitare gli interrupt dell'i2c, poi specificare quanti byte si vogliono trasmettere e a che indirizzo. 
-Gli interrupt vengono impostati da CR1 mentre CR2 si occupa degli indirizzi delle periferiche e dei bytes da trasmettere o leggere. CR2 ha i bit che si occupano dei bytes da trasmettere dalla posizione 16 a 23 è necessario quindi ruotare a sx NBYTES di 16. 
+Gli interrupt vengono impostati da CR1 mentre CR2 si occupa degli indirizzi delle periferiche e dei bytes da trasmettere o leggere. CR2 ha i bit che si occupano dei bytes da trasmettere dalla posizione 16 a 23 è necessario quindi ruotare a sx NBYTES di 16. Bisogna anche alzare il pin di reset PA5 del display e accendere il pin di retroilluminazione PA9 con \textit{GPIOA->ODR |= GPIO\_ODR\_9;} oppure \textit{HAL\_GPIO\_TogglePin(GPIOA,GPIO\_PIN\_9);}.
 \begin{lstlisting}[language=C,caption=Inizio inizializzazione]
 /* definisco gli indirizzi*/
 //indirizzo lcd, ruotato a sx per lasciare bit di r/w
@@ -327,7 +333,6 @@ char initdata[]={0x00,0x38,0x00,0x39,0x00,0x14,
 int NBYTES =(2<<16);
 
 /* faccio partire la trasmissione*/
-
 I2C1->CR1|=I2C_CR1_RXIE;
 I2C1->CR1|=I2C_CR1_TXIE;
 I2C1->CR2|=I2C_CR2_AUTOEND;
@@ -947,6 +952,7 @@ switch(menu){
 \end{lstlisting}
 
 \section{Campionamento con ADC}
+
 Questa esperienza serve a comprendere il campionamento dell'adc come può avvenire in un qualsiasi esperimento di fisica. È stato quindi abilitato l'adc con il timer 1 come trigger(ad ogni overflow del timer1 l'adc, se è pronto, converte). È stata anche abilitata la usart2 per il trasferimento dei dati campionati. 
 Si configurano due possibilità per svolgere queste esperienza, ogni volta che viene convertito un dato lo si trasmette al computer, oppure si memorizzano N dati in un vettori e poi li si spedisce. 
 Dipende tutto dalle esigenze dell'esperimento, usando la prima configurazione si ha il collo di bottiglia dell'usart2 ad ogni campionamento dovendo aspettare 1ms(~10 bit da mandare con velocità 9600bit/s), quindi se si vuole campionare bene un segnale a frequenze estremamente elevate essendo necessario avere una frequenza almeno doppia per il campionamento impedisce di avere segnali con frequenze maggiori di 500Hz. Nel codice seguente è stata adottata la seconda configurazione. 
@@ -1025,7 +1031,7 @@ if((USART2->ISR & USART_ISR_TC) == USART_ISR_TC){
 	}
 \end{lstlisting}
 È stato scritto un piccolo script in python per la conversione dei dati raccolti in un file dall'hyperterminal. 
-\begin{lstlisting}[caption=script.py,language=Python]
+\begin{lstlisting}[caption=script.py,language=python]
 with open("dati_seriale.txt","r") as file:
     line=file.readline()
     cnt=1
@@ -1037,4 +1043,15 @@ with open("dati_seriale.txt","r") as file:
         line=file.readline()
         cnt+=1
 \end{lstlisting}
+Se avessimo invece usato la prima configurazione, trasmettendo il dato ogni qualvolta se ne convertisse uno, sarebbe stato più conveniente dividere i due bytes letti dall'adc in 8 bit, prendendo la parte alta e quella bassa, questo perché la usart può spedire 8 bit per volta. 
+Per dividere in due bit sarebbe stato sufficiente:
+\begin{lstlisting}[caption= Divisione dei 2 byte da inviare, language=C]
+//m = dato letto dal data register dell'adc
+
+high_m=(m>>8)&0xff;
+low_m=m & 0xff; 
+
+\end{lstlisting}
+Questo perché shiftando a dx di 8 se m=1010101011111111 in binario, diventa 0000000010101010, mascherando con 0xff che è 11111111 diventa 10101010 che è la parte alta. Per la parte bassa è più semplice.
+Per trasmettere questi due char, li si mette nel TDR della usart2, ovvero si mette high\_m, si aspetta che la trasmissione abbia finito e poi si manda low\_m. Bisogna stare però attenti al fatto che se il low non è ancora stato spedito una nuova conversione dell'adc potrebbe cambiarlo, bisogna quindi attendere che la trasmissione sia completata prima di convertire un nuovo dato o creare un buffer dove aggiungere tutti i valori high e low da spedire che si accumulano. È evidente che la seconda opzione è la migliore in quanto non si ha perdita di dati di lettura e si riesce a coniugare la lentezza della usart2 con la necessaria velocità dell'adc. Nel frattempo che la usart trasmette tutti i dati, in modo lento, l'adc può continuare a convertire fino a quando non gli si dice di finire. Dopo di che la usart dovrà solo smaltire i dati accumulati nel buffer. 
 \end{document}

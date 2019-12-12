@@ -20,7 +20,7 @@ Il paradigma ad 8 bit è implementato nel seguente modo nell'8051:
     \item La memoria interna RAM è limitata a 256 byte, quindi saranno 256 celle che possono essere indirizzate con soli 8 bit($2^8=256$)
     \item La memoria interna programmi(di tipo flash) essendo indirizzata a 16 bit può arrivare a 64KB, ($2^{16}=65536$ celle di memoria da 1 byte)
 \end{itemize}
-L'indirizzamento a 16 bit è reso possibile dalla presenza di un latch, il quale in un primo momento, mantenendo alta la sua linea di enable, memorizza la parte alta o \textbf{bassa} dell'indirizzo(prende gli 8 bit, più o meno significativi), poi mantenendo bassa la sua linea, mette a disposizione del bus indirizzi il dato che memorizzato, il quale, insieme agli 8 bit rimanenti forniti dal micro va a formare un indirizzo a 16 bit.
+L'indirizzamento a 16 bit è reso possibile dalla presenza di un latch, il quale in un primo momento, mantenendo alta la sua linea di enable, memorizza la parte alta o \textbf{bassa} dell'indirizzo(prende gli 8 bit, più o meno significativi), poi mantenendo bassa la sua linea, mette a disposizione del bus indirizzi il dato che ha memorizzato, il quale, insieme agli 8 bit rimanenti forniti dal micro va a formare un indirizzo a 16 bit.
 
 La memoria programmi usata è del tipo FLASH, il che permette di scrivere e cancellare più volte il programma, cosa necessaria durante lo sviluppo. 
 
@@ -30,7 +30,7 @@ La memoria programmi usata è del tipo FLASH, il che permette di scrivere e canc
 Qui di seguito viene riportata la configurazione generica eseguita all'inizio di ogni esperienza con l'8051.
 
 Il primo passo per configurare il microcontrollore è disattivare il watchdog. Per fare ciò viene usato il Configuration Wizard. All'interno di questo software viene creato un file assembly che viene incluso nel progetto del'8051 ed eseguito all'inizio del main mettendo in funzione tutte le periferiche interessate. Un ulteriore step da fare in fase di configurazione è quello di indicare al micro una sorgente esterna per il clock. La sorgente che useremo è un cristallo oscillatore che ha una frequenza di 22.1184 MHz. Questo passaggio è necessario per garantire al micro di avere una frequenza di clock più precisa in quanto quella interna è di ($2\pm0.02$)MHz.
-Una volta completata la configurazione nel Wizard, si esporta un file .asm che viene incluso nel progetto e nel file contenente il programma(e.g."led.a51") viene dichiarata una funzione esterna Init\_Device che fa riferimento a quella scritta dal Wizard.
+Una volta completata la configurazione nel Wizard, si esporta un file .asm che viene incluso nel progetto e nel file contenente il programma(e.g."led.a51") viene dichiarata una funzione esterna Init\_Device che fa riferimento a quella scritta dal Wizard che viene eseguita in cima al main.
 
 \section{Relazione led}
 \subsection{Led in assembly in polling}
@@ -82,7 +82,7 @@ TIMER:
 
 \subsection{Led in assembly con interrupt}
 
-La gestione dell'interrupt è il fulcro di questa esperienza. Innanzitutto quindi bisogna abilitarlo nel configuration wizard. È stato poi necessario capire come gestirlo. È stato necessario fare un code segment a 0x000B dove punta l'interrupt del timer0, ovvero la porzione di codice che viene eseguita quando scatta l'interrupt. Visto che lo spazio riservato in 0x000B permette di eseguire solo un'istruzione è necessario fare un JMP ad un'area di memoria programmi in cui è possibile svolgere più istruzioni. In quest'area viene gestito completamente l'interrupt dalle funzioni sotto elencate.
+La gestione dell'interrupt è il fulcro di questa esperienza. Innanzitutto bisogna abilitarlo nel configuration wizard. È stato poi necessario capire come gestirlo, facendo un code segment a 0x000B dove punta l'interrupt del timer0, ovvero la porzione di codice che viene eseguita quando scatta l'interrupt. Visto che lo spazio riservato in 0x000B permette di eseguire solo un'istruzione è necessario fare un JMP ad un'area di memoria programmi in cui è possibile svolgere più istruzioni. In quest'area viene gestito completamente l'interrupt dalle funzioni sotto elencate.
 
 \begin{lstlisting}[caption=Funzione timer]
 TIMER:
@@ -123,14 +123,14 @@ SPEGNIMENTO:
 \end{lstlisting}
 R1 quindi in questo caso è un registro di stato, tiene in memoria lo stato del led, se è acceso o spento.
 
-Ciò che viene eseguito nel main è solamente la configurazione del micro, viene messo in R0 l'indirizzo di 255 e in R1 quello di 0.
+Ciò che viene eseguito nel main è solamente la configurazione del micro, viene messo R0 a 255 e R1 a 0.
 
 \subsection{Led in C}\label{led in C}
-Scopo di quest'esperienza è di apprendere l'interazione tra il programma in C e quello in assembly. La parte di configurazione del micro infatti rimane scritta in asm mentre il codice principale è scritto in C. L'interazione in realtà si limita a dichiarare nel file .c una funzione esterna Init Device definita nel file .asm. Il programma in questo caso, invece di limitarsi ad accendere e spegnere il led, permette di regolarne la luminosità tramite il bottone disposto sulla scheda di sviluppo. Dunque le novità del codice rispetto a quelli precedenti sono 
+Scopo di quest'esperienza è di apprendere l'interazione tra il programma in C e quello in assembly. La parte di configurazione del micro infatti rimane scritta in asm mentre il codice principale è scritto in C. L'interazione in realtà si limita a dichiarare nel file .c una funzione esterna Init\_Device definita nel file .asm. Il programma in questo caso, invece di limitarsi ad accendere e spegnere il led, permette di regolarne la luminosità tramite il bottone disposto sulla scheda di sviluppo. Dunque le novità del codice rispetto a quelli precedenti sono 
 \begin{itemize}
     \item codice in C
     \item gestione della luminosità del led
-    \item gesitone dell'interrupt del bottone
+    \item gestione dell'interrupt del bottone
 \end{itemize}
 
 Quindi andando in ordine il codice in C: volendo operare solo su alcuni bit dei registri di controllo è stato necessario definirli a partire dalle variabili dichiarate nel file C8051f020.h in questo modo:
@@ -142,8 +142,8 @@ che permette di selezionare solo i bit che ci interessano.
 
 Per quanto riguarda la luminosità, che in realtà non è regolabile sul micro, viene usato un'escamotage modificando la frequenza con cui viene acceso e spento il led. All'occhio umano il cambio di frequenza di accensione appare come una differente luminosità in quanto la frequenza è paragonabile con il refresh rate dell'occhio. 
 
-La gestione dell'interrupt del bottone viene eseguita in modo molto simile a quella del led, tranne per il fatto che il flag dell'interrupt non è bit addressable quindi per resettarlo è necessario usare una maschera e per il numero di interrupt assegnato. 
-Come ulteriore differenza dall'asm infatti si ha che per gestire l'interrupt è necessario definire funzioni il cui nome è seguito da "interrupt" e da un numero che identifica quale interrupt si sta gestendo. 
+La gestione dell'interrupt del bottone viene eseguita in modo molto simile a quella del led, tranne per il fatto che il flag dell'interrupt non è bit addressable quindi per resettarlo è necessario usare una maschera. 
+Come ulteriore differenza dall'asm infatti si ha che per gestire l'interrupt è necessario definire funzioni il cui nome è seguito da \textit{interrupt} e da un numero che identifica quale interrupt si sta gestendo. 
 
  Loops identifica quanti cicli di overflow del timer si aspettano prima di cambiare lo stato del led, ovvero identifica la frequenza di accensione e spegnimento. Questo controllo viene effettuato all'interno dell'interrupt del timer.
  \begin{lstlisting}[language=C,caption=Interrupt timer]
@@ -172,7 +172,7 @@ Come ulteriore differenza dall'asm infatti si ha che per gestire l'interrupt è 
 }
  \end{lstlisting}
  
- Dunque si è definita la luminosità come un int che può essere 0, 25,50,75,100. La variabile lumstatus identifica in che stato si è tra i 5 possibili. Essa viene modificata nell'interrupt del bottone, quindi ogni volta che viene schiacciato.
+ Dunque si è definita la luminosità come un int che può essere 0, 25,50,75,100. La variabile lumstatus identifica in che stato si è tra i 5 possibili. Essa viene modificata nell'interrupt del bottone, quindi, ogni volta che viene schiacciato.
  \begin{lstlisting}[language=C, caption=Interrupt pulsante,label={lst:led in C}]
  void interruzione_pulsante(void) interrupt 19{
 	TR0=0;
@@ -212,19 +212,18 @@ Init_Device();
 loops_on=n_loops*luminosity/100;
 loops=loops_on;
 \end{lstlisting}
+Dove si è usato lo stack1 per gestire le chiamate ai sottoprogrammi, ad esempio quando si chiama Init\_Device().
 
-
-%commentare la scelta dello stack
 
 \section{Relazione Seriale}
 La comunicazione UART è l'oggetto di questa esperienza. Si è messo in comunicazione il micro con il computer, tramite un cavo che collega la usb del computer con i due pin(più il pin GND) del micro, uno per la trasmissione e uno per la ricezione.
 
 Prima di trasmettere e ricevere un carattere è necessario innanzitutto configurare la UART, con il BAUDE RATE(9600 bps) corretto, e con il timer corretto e infine abilitare l'interrupt.  
-
 Per trasmettere è necessario mettere in SBUF0 il carattere che si vuole mandare, il micro provvederà a trasmetterlo e a trasmissione conclusa genererà un'interrupt settando la flag TI(trasmissione completata). Per quanto riguarda la ricezione invece, il programma entra in interrupt con la flag RI(ricezione completata) dopo aver ricevuto il bit di stop, e mette a disposizione il carattere ricevuto nello SBUF0.  
+
 \subsection{Seriale in C}
 
-In una prima fase del programma il micro trasmetteva un messaggio di benvenuto, nella seconda fase entrava in modalità eco, quindi ad ogni carattere che gli si mandava lui trasmetteva lo stesso carattere. Infine nell'ultima fase memorizzava una serie di caratteri(massimo 10) e dopo un certo carattere("\#") ritrasmetteva la stessa serie. Per realizzare ciò è stata implementata la funzione scelta che a seconda del valore di status(0,1 o 2) svolge compiti diversi. Nella prima trasmette il messaggio a cui punta \textit{puntatore}(nella prima fase è il messaggio di benvenuto ma successivamente diventa il messaggio trasmesso dall'utente al computer), nella seconda viene implementata la modalità eco e nella terza si riceve una serie di caratteri che viene memorizzata in un vettore. Se il messaggio mandato dall'utente è più lungo di 10 caratteri viene trasmesso un messaggio di errore.
+In una prima fase del programma il micro trasmetteva un messaggio di benvenuto, nella seconda fase entrava in modalità eco, quindi ad ogni carattere che gli si mandava lui trasmetteva lo stesso carattere. Infine nell'ultima fase memorizzava una serie di caratteri(massimo 10) e dopo un certo carattere("\#") ritrasmetteva la stessa serie. Per realizzare ciò è stata implementata la funzione scelta che a seconda del valore di status(0,1 o 2) svolge compiti diversi. Nella prima trasmette il messaggio a cui punta \textit{puntatore}(all'inizio del programma è il messaggio di benvenuto ma successivamente diventa il messaggio trasmesso dall'utente al computer), nella seconda viene implementata la modalità eco e nella terza si riceve una serie di caratteri che viene memorizzata in un vettore. Se il messaggio mandato dall'utente è più lungo di 10 caratteri viene trasmesso un messaggio di errore.
 
 \begin{lstlisting}[language=C,caption=Funzione scelta,label={lst:scelta}]
 void scelta(void){
@@ -339,7 +338,8 @@ msg_ricevuto[0]=CR;
 msg_ricevuto[1]=LF;
 while(1);
 \end{lstlisting}
-%aggiungere esperienza con oscilloscopio
+
+
 È stato collegato l'oscilloscopio ai pin dedicata all'UART per controllare il segnale trasmesso. Sono stati ottenuti i seguenti grafici:
 \begin{figure}[H]
     \centering
@@ -363,10 +363,10 @@ I messaggi che sono stati trasmetti dell'Hyperterminal al micro sono 'a', 'b' e 
 
 \subsection{Seriale in assembly}
 
-Questo semplice programma, è una piccola variante di quello precedente in cui si vuole imparare a gestire un vettore in Assembly. Infatti ciò che si definisce è un vettore nella memoria programmi, questo perché il vettore non verrà modificato ma solo letto, contenente il messaggio di benvenuto. L'indirizzo del vettore viene poi passato, subito dopo la configurazione del micro, al Data Pointer. Viene successivamente implementata una funione NEXT che salva nell'Accumulator il carattere successivo in modo tale che sia accessibile dal main del programma in c. Dunque nel programma in C basterà chiamare questa funzione e prendere il carattere contenuto in A e trasmetterlo. 
+Questo semplice programma, è una piccola variante di quello precedente in cui si vuole imparare a gestire un vettore in Assembly. Infatti ciò che si definisce è un vettore contenente il messaggio di benvenuto nella memoria programmi, questo perché il vettore non verrà modificato ma solo letto. L'indirizzo del vettore viene poi passato, subito dopo la configurazione del micro, al Data Pointer. Viene successivamente implementata una funione NEXT che salva nell'Accumulator il carattere successivo in modo tale che sia accessibile dal main del programma in c. Dunque nel programma in C basterà chiamare questa funzione e prendere il carattere contenuto in A e trasmetterlo. 
 
 
-\begin{minipage}{0.49\textwidth}
+\begin{minipage}{0.41\textwidth}
 \begin{lstlisting}[caption=Vettore in Assembly]
 VETTORE SEGMENT CODE
 STACK SEGMENT IDATA
@@ -388,11 +388,10 @@ END
 \end{minipage}%
 \hfill
 \begin{minipage}{0.49\textwidth}
-\begin{tabular}{|p{0.8\textwidth}}
+\begin{tabular}{|p{0.9\textwidth}}
 \begin{lstlisting}[caption=codice in C]
 NEXT();
-*puntatore=
-(uchar)ACC;
+*puntatore=(uchar)ACC;
 \end{lstlisting}
 \end{tabular}
 \end{minipage}%
